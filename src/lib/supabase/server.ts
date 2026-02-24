@@ -26,9 +26,10 @@ export function createServerSupabaseClient() {
         set(name: string, value: string, opts: any) {
           cookieStore.set({ name, value, ...opts })
         },
-        remove(name: string, opts: any) {
-          cookieStore.delete(name, opts)
-        },
+       remove(name: string, _opts: any) {
+  cookieStore.delete(name)
+}
+
       },
     }
   )
