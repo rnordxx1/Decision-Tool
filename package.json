@@ -12,8 +12,8 @@
     "next": "^14.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@supabase/supabase-js": "^2.9.2",
-    "@supabase/ssr": "^0.1.4",
+    "@supabase/supabase-js": "^2.97.0"
+   "@supabase/ssr": "^0.8.0",
     "chart.js": "^4.4.0",
     "react-chartjs-2": "^5.2.0"
   },
