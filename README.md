@@ -89,3 +89,4 @@ The dashboard uses Supabase Auth for login.  Sign‑ups should remain disabled i
 ## Limitations
 
 This implementation intentionally uses simple tables instead of charts to visualise the breakdowns.  The project includes `chart.js` and `react-chartjs-2` as dependencies in `package.json`, so you may later enhance the dashboard with charts if desired.  The data aggregation is done in memory; for very large datasets you may consider offloading aggregation to Supabase using SQL queries or stored procedures.
+.
