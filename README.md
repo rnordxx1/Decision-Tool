@@ -16,26 +16,25 @@ This project implements a Next.js App Router application that accepts public dec
 ## Project structure
 
 ```
-hns-app/
-├── README.md          – this file
-├── package.json       – dependencies and scripts
-├── next.config.js     – Next.js configuration
-├── tsconfig.json      – TypeScript configuration
-├── next-env.d.ts      – TypeScript definitions for Next.js
-├── src/
-│   ├── app/
-│   │   ├── page.tsx            – redirects `/` to the login page
-│   │   ├── login/page.tsx      – client component for email/password login
-│   │   ├── dashboard/page.tsx  – protected dashboard displaying analytics
-│   │   └── api/
-│   │       └── hns/
-│   │           └── submit/route.ts – public ingestion endpoint
-│   └── lib/
-│       └── supabase/
-│           ├── client.ts       – helper to create a browser client
-│           ├── server.ts       – helper to create a server client (uses cookies)
-│           └── admin.ts        – helper to create an admin client with the service role key
-└── hns-app.zip         – zipped copy of the project (for convenience)
+Decision-Tool/
+├── README.md                        – this file
+├── package.json                     – dependencies and scripts
+├── next.config.js                   – Next.js configuration
+├── tsconfig.json                    – TypeScript configuration (paths alias: "@/*" → "./src/*")
+├── next-env.d.ts                    – TypeScript definitions for Next.js
+├── app/                             – App Router (served by Next.js)
+│   ├── layout.tsx                   – root layout
+│   ├── login/page.tsx               – client component for email/password login
+│   ├── dashboard/page.tsx           – protected dashboard displaying analytics
+│   └── api/
+│       └── hns/
+│           └── submit/route.ts      – public ingestion endpoint (CORS-protected)
+└── src/
+    └── lib/
+        └── supabase/
+            ├── client.ts            – browser client
+            ├── server.ts            – server client (cookie-based auth)
+            └── admin.ts             – admin client using the service role key
 ```
 
 ## Environment variables
@@ -53,7 +52,7 @@ The service role key **must never be exposed to the browser**.  Vercel provides 
 
 ### Configuring CORS
 
-The ingestion endpoint implements manual CORS headers.  Only requests originating from `https://www.sleepapneaimplant.org` and `https://sleepapneaimplant.org` are accepted.  If you need to allow additional origins you may update the `ALLOWED_ORIGINS` set in `src/app/api/hns/submit/route.ts`.
+The ingestion endpoint implements manual CORS headers.  Only requests originating from `https://www.sleepapneaimplant.org` and `https://sleepapneaimplant.org` are accepted.  If you need to allow additional origins you may update the `ALLOWED_ORIGINS` set in `app/api/hns/submit/route.ts`.
 
 ## Running locally
 
