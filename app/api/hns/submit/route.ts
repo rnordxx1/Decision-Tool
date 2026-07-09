@@ -8,6 +8,32 @@ const ALLOWED_ORIGINS = new Set([
   'https://sleepapneaimplant.org',
 ])
 
+// The client guards against double-clicks, but network-level retries can
+// still deliver the same submission twice. An identical record arriving
+// within this window is treated as already accepted and not re-inserted.
+const DUPLICATE_WINDOW_MS = 30_000
+
+/**
+ * JSON.stringify with recursively sorted object keys, so a record compares
+ * equal to its JSONB round-trip from Postgres (which reorders keys).
+ */
+function stableStringify(value: any): string {
+  if (Array.isArray(value)) {
+    return '[' + value.map(stableStringify).join(',') + ']'
+  }
+  if (value !== null && typeof value === 'object') {
+    return (
+      '{' +
+      Object.keys(value)
+        .sort()
+        .map((k) => JSON.stringify(k) + ':' + stableStringify(value[k]))
+        .join(',') +
+      '}'
+    )
+  }
+  return JSON.stringify(value)
+}
+
 /**
  * Handle CORS preflight requests.  For allowed origins the necessary CORS headers
  * are returned; otherwise the request is rejected.
@@ -82,6 +108,28 @@ export async function POST(request: NextRequest) {
 
   try {
     const supabase = createAdminClient()
+
+    // Idempotency (best effort): if an identical record already arrived within
+    // the duplicate window, report success without inserting a second row.
+    // Fails open — any error here falls through to the normal insert.
+    const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString()
+    const { data: recent, error: recentError } = await supabase
+      .from('hns_responses')
+      .select(Object.keys(record).join(','))
+      .gte('created_at', since)
+    if (!recentError && Array.isArray(recent)) {
+      const fingerprint = stableStringify(record)
+      if (recent.some((row) => stableStringify(row) === fingerprint)) {
+        return NextResponse.json(
+          { success: true, duplicate: true },
+          {
+            status: 200,
+            headers: { 'Access-Control-Allow-Origin': origin },
+          }
+        )
+      }
+    }
+
     const { error } = await supabase.from('hns_responses').insert(record)
     if (error) {
       console.error('Supabase insert error', error)
