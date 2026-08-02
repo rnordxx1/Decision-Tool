@@ -85,26 +85,66 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid ratedCount' }, { status: 400 })
   }
 
-  // Prepare record for insertion into Supabase
-  const record: any = {
-    version: body.version ?? null,
-    tool_page: body.toolPage ?? null,
-    referrer_host: body.referrerHost ?? null,
-    // UTM parameters are optional and stored individually
-    utm_source: body.utm?.source ?? null,
-    utm_medium: body.utm?.medium ?? null,
-    utm_campaign: body.utm?.campaign ?? null,
-    utm_term: body.utm?.term ?? null,
-    utm_content: body.utm?.content ?? null,
-    adhesive_intolerance: body.adhesiveIntolerance ?? null,
-    inspire_score: body.inspireScore ?? null,
-    genio_score: body.genioScore ?? null,
-    recommendation: body.recommendation ?? null,
-    rated_count: ratedCount,
-    priorities: body.priorities ?? null,
-    top_reasons: body.topReasons ?? null,
-    demographics: body.demographics ?? null,
-  }
+  /**
+   * UTM parameters. The site has always sent these FLAT (utm_source,
+   * utm_medium, …) at the top level, while this route only ever read them
+   * from a nested `body.utm` object — so every UTM column in hns_responses
+   * has been null since launch. Read flat first, fall back to nested so an
+   * older cached copy of the page still logs correctly.
+   */
+  const utm = (k: string) =>
+    body[`utm_${k}`] ?? body.utm?.[k] ?? null
+
+  /**
+   * V2.0 writes to its own table. Owner's call, 2026-08-02: V1 stays frozen
+   * and V2 gets columns named for what it actually measures, rather than
+   * being squeezed into V1's vocabulary (inspire_score / genio_score / nine
+   * 0-10 priorities / a scored adhesive modifier — none of which V2 emits).
+   * The two instruments are not comparable and their rows must not be pooled.
+   */
+  const isV2 = String(body.toolVersion ?? '').startsWith('2')
+  const table = isV2 ? 'hns_responses_v2' : 'hns_responses'
+
+  const record: any = isV2
+    ? {
+        tool_version: body.toolVersion ?? '2.0',
+        tool_page: body.toolPage ?? null,
+        referrer_host: body.referrerHost ?? null,
+        landing_path: body.landingPath ?? null,
+        utm_source: utm('source'),
+        utm_medium: utm('medium'),
+        utm_campaign: utm('campaign'),
+        utm_term: utm('term'),
+        utm_content: utm('content'),
+        gates: body.gates ?? null,
+        gate_outcome: body.gateOutcome ?? null,
+        tradeoffs: body.tradeoffs ?? null,
+        tradeoffs_answered: ratedCount,
+        mri_relevant: typeof body.mriRelevant === 'boolean' ? body.mriRelevant : null,
+        lean_toward: body.leanToward ?? null,
+        lean_percent: body.leanPercent ?? null,
+        evidence_share: body.evidenceShare ?? null,
+        brief: body.brief ?? null,
+        demographics: body.demographics ?? null,
+      }
+    : {
+        version: body.version ?? null,
+        tool_page: body.toolPage ?? null,
+        referrer_host: body.referrerHost ?? null,
+        utm_source: utm('source'),
+        utm_medium: utm('medium'),
+        utm_campaign: utm('campaign'),
+        utm_term: utm('term'),
+        utm_content: utm('content'),
+        adhesive_intolerance: body.adhesiveIntolerance ?? null,
+        inspire_score: body.inspireScore ?? null,
+        genio_score: body.genioScore ?? null,
+        recommendation: body.recommendation ?? null,
+        rated_count: ratedCount,
+        priorities: body.priorities ?? null,
+        top_reasons: body.topReasons ?? null,
+        demographics: body.demographics ?? null,
+      }
 
   try {
     const supabase = createAdminClient()
@@ -114,7 +154,7 @@ export async function POST(request: NextRequest) {
     // Fails open — any error here falls through to the normal insert.
     const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString()
     const { data: recent, error: recentError } = await supabase
-      .from('hns_responses')
+      .from(table)
       .select(Object.keys(record).join(','))
       .gte('created_at', since)
     if (!recentError && Array.isArray(recent)) {
@@ -130,7 +170,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { error } = await supabase.from('hns_responses').insert(record)
+    const { error } = await supabase.from(table).insert(record)
     if (error) {
       console.error('Supabase insert error', error)
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
