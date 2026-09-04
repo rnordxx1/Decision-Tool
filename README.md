@@ -4,7 +4,9 @@ This project implements a Next.js App Router application that accepts public dec
 
 ## Features
 
-- **Public ingestion endpoint**: `POST /api/hns/submit` accepts JSON payloads from the decision tool.  It validates the payload (consent must be `true`, a honeypot field is rejected and `ratedCount` must be greater than zero), applies strict CORS only allowing `https://www.sleepapneaimplant.org` and `https://sleepapneaimplant.org`, and inserts the record into the `public.hns_responses` table on Supabase via the service role key.  All UTM parameters, scores, recommendations and demographics are persisted.
+- **Public ingestion endpoint**: `POST /api/hns/submit` accepts JSON payloads from the decision tool.  It requires `demographics.consent === true` (the site only posts when the visitor's sharing box is checked; the site owns that box's default state), rejects a filled honeypot field, requires an integer `ratedCount` from 1 to 50, applies strict CORS only allowing `https://www.sleepapneaimplant.org` and `https://sleepapneaimplant.org`, and inserts the record into `public.hns_responses_v2` (tool version 2.x) or `public.hns_responses` (V1) on Supabase via the service role key.
+- **Validation and limits** (added 2026-09-03): the body must be `application/json` and at most 64 KB; every field is type-checked, length-capped and rebuilt before insert (unknown keys are dropped, the jsonb blobs — gates, tradeoffs, brief, priorities — are capped in depth, key count and size, and prototype-polluting keys are discarded); a best-effort throttle counts only submissions that pass validation and allows 40 per address and 2,000 overall per 10 minutes per function instance (`HNS_RATE_MAX_PER_IP` / `HNS_RATE_MAX_GLOBAL` override the defaults; the counter is not shared across instances — Vercel WAF rate limiting or Upstash is the durable option). Attribution fields (referrer, landing path, campaign tags) are cleaned and clipped rather than rejected. The Origin check is a browser-side guard, not authentication; the validation is what keeps the table clean. Rejections log a reason but never the payload; database errors log code and message only. The dashboard verifies the login with `auth.getUser()` and its CSV export neutralizes spreadsheet formulas.
+- **Retention**: no automatic deletion yet. `supabase/retention_policy.sql` holds a ready-to-run pg_cron job (24 months, V2 table only) that is deliberately NOT applied until the owner picks a period; the site's privacy page must change in the same sitting.
 - **Password‑protected dashboard**: `/login` allows a user with an existing Supabase Auth email/password to sign in.  `/dashboard` is a server component that checks for a valid session; unauthenticated users are redirected back to `/login`.  Once authenticated the dashboard displays:
   - KPI cards for total responses, Inspire/Genio/Tie counts and the last 7 days of responses.
   - A distribution table of recommendations.
@@ -29,6 +31,9 @@ Decision-Tool/
 │   └── api/
 │       └── hns/
 │           └── submit/route.ts      – public ingestion endpoint (CORS-protected)
+├── supabase/
+│   ├── hns_responses_v2.sql         – V2 table (run once)
+│   └── retention_policy.sql         – optional pg_cron deletion job (NOT applied)
 └── src/
     └── lib/
         └── supabase/
@@ -82,7 +87,7 @@ The dashboard uses Supabase Auth for login.  Sign‑ups should remain disabled i
 
 - **Service role key**: The service role key bypasses Row Level Security.  It is only used server‑side (in API routes and server components).  Never expose it to the browser or commit it to your repository.
 - **CORS**: Only the specified domains are allowed to submit responses.  Requests from other origins will be rejected.
-- **Payload validation**: The ingestion endpoint rejects requests that do not include consent, that include a `honeypot` field, or that have `ratedCount` less than 1.
+- **Payload validation**: The ingestion endpoint rejects requests that do not carry `demographics.consent === true`, that carry a filled `honeypot` field, whose `ratedCount` is not an integer from 1 to 50, that are not `application/json`, that exceed 64 KB, or whose fields fail the shape and size checks described above.
 - **Authentication**: All dashboard pages are wrapped with a session check.  If the session is invalid or missing the user will be redirected to the login page.
 
 ## Limitations
