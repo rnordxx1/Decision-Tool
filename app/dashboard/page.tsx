@@ -13,11 +13,13 @@ import { Suspense } from 'react'
 export default async function DashboardPage() {
   // Check for a valid session using the cookie-based server client.  If there
   // isn't a valid session, redirect the user back to the login page.
+  // getUser() verifies the token with Supabase; getSession() only decodes
+  // the cookie, which a forged cookie could satisfy.
   const supabaseServer = createServerSupabaseClient()
   const {
-    data: { session },
-  } = await supabaseServer.auth.getSession()
-  if (!session) {
+    data: { user },
+  } = await supabaseServer.auth.getUser()
+  if (!user) {
     redirect('/login')
   }
 
@@ -140,6 +142,9 @@ export default async function DashboardPage() {
         } else {
           text = String(val)
         }
+        // A cell starting with = + - @ (or a tab/return) is executed as a
+        // formula by Excel and Sheets; prefix it so it opens as text.
+        if (/^[=+\-@\t\r]/.test(text)) text = "'" + text
         // escape any double quotes by doubling them
         text = text.replace(/"/g, '""')
         // wrap in quotes if it contains a comma or newline
